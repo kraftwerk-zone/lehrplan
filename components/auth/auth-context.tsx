@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import type { User } from "@supabase/supabase-js"
-import { supabase } from "@/lib/supabase"
+import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 
 export interface AuthUser {
   id: string
@@ -46,6 +46,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setReady(true)
+      return
+    }
+
     let mounted = true
 
     async function initSession() {
@@ -71,6 +76,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
+    if (!isSupabaseConfigured()) {
+      return { error: "Supabase ist nicht konfiguriert." }
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     return { error: error?.message ?? null }
   }, [])
