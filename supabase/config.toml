@@ -1,0 +1,7 @@
+project_id = "zsekgyxjtquobqxlzoez"
+
+[api]
+enabled = true
+
+[db]
+major_version = 15
