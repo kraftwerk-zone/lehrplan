@@ -7,10 +7,13 @@ import {
   countReportReferences,
   downloadCurriculumReportExcel,
   type ReportReferenceNode,
+  type ReportStudentSummary,
   type ReportSubTopicNode,
+  type ReportSubjectSummary,
   type ReportTopicNode,
 } from "@/lib/reporting"
 import { formatAverage } from "@/lib/reference-utils"
+import { getSubjectTheme } from "@/lib/subject-theme"
 import type { Student, Subject, Topic } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -34,8 +37,8 @@ export function CurriculumReportView({ subjects, topics, students }: CurriculumR
         <div>
           <h1 className="text-xl font-semibold text-foreground">Auswertung</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Baumstruktur nach Thema, Unterthema und Verweisen mit Bewertungen pro Kind. In der Zusammenfassung:
-            Summe, Anzahl Bewertungen, NA und Durchschnitt (ohne NA).
+            Baumstruktur nach Thema, Unterthema und Verweisen mit Bewertungen pro Kind. Die Zusammenfassung ist
+            fachspezifisch: Summe, Anzahl Bewertungen, NA und Durchschnitt (ohne NA) je Fach.
           </p>
         </div>
         <button
@@ -61,7 +64,7 @@ export function CurriculumReportView({ subjects, topics, students }: CurriculumR
         <>
           <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-1" role="tablist">
             <TabButton active={tab === "summary"} onClick={() => setTab("summary")}>
-              Zusammenfassung ({report.summaries.length} Kinder)
+              Zusammenfassung ({report.summariesBySubject.length} Fächer)
             </TabButton>
             <TabButton active={tab === "detail"} onClick={() => setTab("detail")}>
               Detail ({report.tree.length} Themen · {referenceCount} Verweise)
@@ -69,34 +72,15 @@ export function CurriculumReportView({ subjects, topics, students }: CurriculumR
           </div>
 
           {tab === "summary" ? (
-            <section className="overflow-hidden rounded-xl border border-border bg-card">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[40rem] border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/50 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      <th className="px-4 py-3">Kind</th>
-                      <th className="px-4 py-3 text-right">Summe Punkte</th>
-                      <th className="px-4 py-3 text-right">Bewertungen</th>
-                      <th className="px-4 py-3 text-right">NA</th>
-                      <th className="px-4 py-3 text-right">Ø (ohne NA)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.summaries.map((row) => (
-                      <tr key={row.studentName} className="border-b border-border/60 last:border-0">
-                        <td className="px-4 py-2.5 font-medium text-foreground">{row.studentName}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-foreground">{row.totalPoints}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-foreground">{row.ratingCount}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{row.naCount}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-foreground">
-                          {formatAverage(row.average)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            <div className="flex flex-col gap-4">
+              {report.summariesBySubject.map((subjectSummary) => (
+                <SubjectSummarySection
+                  key={subjectSummary.subjectId}
+                  summary={subjectSummary}
+                  subject={subjects.find((s) => s.id === subjectSummary.subjectId)}
+                />
+              ))}
+            </div>
           ) : (
             <section className="overflow-hidden rounded-xl border border-border bg-card">
               <div className="max-h-[calc(100vh-16rem)] overflow-auto p-2">
@@ -107,6 +91,60 @@ export function CurriculumReportView({ subjects, topics, students }: CurriculumR
         </>
       )}
     </div>
+  )
+}
+
+function SubjectSummarySection({
+  summary,
+  subject,
+}: {
+  summary: ReportSubjectSummary
+  subject: Subject | undefined
+}) {
+  const theme = subject ? getSubjectTheme(subject.color) : null
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-card">
+      <header
+        className={cn(
+          "flex items-center gap-2 border-b border-border px-4 py-3",
+          theme?.chip ?? "bg-muted/50 text-foreground",
+        )}
+      >
+        {theme && <span className={cn("size-2.5 shrink-0 rounded-full", theme.dot)} aria-hidden />}
+        <h2 className="text-sm font-semibold">{summary.subjectName}</h2>
+      </header>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[40rem] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border bg-muted/30 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <th className="px-4 py-3">Kind</th>
+              <th className="px-4 py-3 text-right">Summe Punkte</th>
+              <th className="px-4 py-3 text-right">Bewertungen</th>
+              <th className="px-4 py-3 text-right">NA</th>
+              <th className="px-4 py-3 text-right">Ø (ohne NA)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summary.students.map((row) => (
+              <SummaryRow key={row.studentName} row={row} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function SummaryRow({ row }: { row: ReportStudentSummary }) {
+  return (
+    <tr className="border-b border-border/60 last:border-0">
+      <td className="px-4 py-2.5 font-medium text-foreground">{row.studentName}</td>
+      <td className="px-4 py-2.5 text-right tabular-nums text-foreground">{row.totalPoints}</td>
+      <td className="px-4 py-2.5 text-right tabular-nums text-foreground">{row.ratingCount}</td>
+      <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{row.naCount}</td>
+      <td className="px-4 py-2.5 text-right tabular-nums text-foreground">{formatAverage(row.average)}</td>
+    </tr>
   )
 }
 

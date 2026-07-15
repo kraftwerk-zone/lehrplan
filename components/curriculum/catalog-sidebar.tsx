@@ -301,7 +301,7 @@ function SubTopicRow({ subTopic, subject, onUpdateSubTopic, onDeleteSubTopic, on
             min={0}
             value={subTopic.durationInDays}
             onChange={(e) => setNumber("durationInDays", e.target.value)}
-            className="w-8 rounded border border-border bg-background px-1 py-0.5 text-center text-[11px] text-foreground outline-none focus:ring-1 focus:ring-ring"
+            className="w-11 rounded border border-border bg-background px-1 py-0.5 text-center text-[11px] tabular-nums text-foreground outline-none focus:ring-1 focus:ring-ring"
             aria-label="Unterrichtstage"
           />
         </label>
@@ -312,7 +312,7 @@ function SubTopicRow({ subTopic, subject, onUpdateSubTopic, onDeleteSubTopic, on
             min={0}
             value={subTopic.bufferInDays}
             onChange={(e) => setNumber("bufferInDays", e.target.value)}
-            className="w-8 rounded border border-dashed border-border bg-background px-1 py-0.5 text-center text-[11px] text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+            className="w-11 rounded border border-dashed border-border bg-background px-1 py-0.5 text-center text-[11px] tabular-nums text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
             aria-label="Puffertage"
           />
         </label>

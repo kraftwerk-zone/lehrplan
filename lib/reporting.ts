@@ -18,6 +18,7 @@ export interface ReportSubTopicNode {
 export interface ReportTopicNode {
   id: string
   name: string
+  subjectId: string
   subjectName: string
   subTopics: ReportSubTopicNode[]
 }
@@ -30,9 +31,15 @@ export interface ReportStudentSummary {
   average: number | null
 }
 
+export interface ReportSubjectSummary {
+  subjectId: string
+  subjectName: string
+  students: ReportStudentSummary[]
+}
+
 export interface CurriculumReport {
   tree: ReportTopicNode[]
-  summaries: ReportStudentSummary[]
+  summariesBySubject: ReportSubjectSummary[]
 }
 
 export function buildCurriculumReport(subjects: Subject[], topics: Topic[], students: Student[]): CurriculumReport {
@@ -74,21 +81,41 @@ export function buildCurriculumReport(subjects: Subject[], topics: Topic[], stud
     tree.push({
       id: topic.id,
       name: topic.name,
+      subjectId: topic.subjectId,
       subjectName: subjectById.get(topic.subjectId) ?? "—",
       subTopics,
     })
   }
 
-  const globalByStudent = new Map<string, { total: number; na: number; rated: number }>()
+  const summariesBySubject: ReportSubjectSummary[] = subjects
+    .map((subject) => {
+      const subjectTopics = tree.filter((node) => node.subjectId === subject.id)
+      if (subjectTopics.length === 0) return null
+      return {
+        subjectId: subject.id,
+        subjectName: subject.name,
+        students: aggregateStudentSummaries(subjectTopics, orderedStudents),
+      }
+    })
+    .filter((entry): entry is ReportSubjectSummary => entry !== null)
+
+  return { tree, summariesBySubject }
+}
+
+function aggregateStudentSummaries(
+  topicNodes: ReportTopicNode[],
+  orderedStudents: Student[],
+): ReportStudentSummary[] {
+  const byStudent = new Map<string, { total: number; na: number; rated: number }>()
   for (const student of orderedStudents) {
-    globalByStudent.set(student.name, { total: 0, na: 0, rated: 0 })
+    byStudent.set(student.name, { total: 0, na: 0, rated: 0 })
   }
 
-  for (const topic of tree) {
+  for (const topic of topicNodes) {
     for (const subTopic of topic.subTopics) {
       for (const ref of subTopic.references) {
         for (const { studentName, rating } of ref.studentRatings) {
-          const entry = globalByStudent.get(studentName)
+          const entry = byStudent.get(studentName)
           if (!entry) continue
           if (rating === "NA") entry.na++
           else if (rating !== "") {
@@ -100,8 +127,8 @@ export function buildCurriculumReport(subjects: Subject[], topics: Topic[], stud
     }
   }
 
-  const summaries: ReportStudentSummary[] = orderedStudents.map((student) => {
-    const entry = globalByStudent.get(student.name) ?? { total: 0, na: 0, rated: 0 }
+  return orderedStudents.map((student) => {
+    const entry = byStudent.get(student.name) ?? { total: 0, na: 0, rated: 0 }
     return {
       studentName: student.name,
       totalPoints: entry.total,
@@ -110,8 +137,6 @@ export function buildCurriculumReport(subjects: Subject[], topics: Topic[], stud
       average: entry.rated > 0 ? entry.total / entry.rated : null,
     }
   })
-
-  return { tree, summaries }
 }
 
 export function countReportReferences(tree: ReportTopicNode[]): number {
@@ -126,14 +151,17 @@ export function downloadCurriculumReportExcel(subjects: Subject[], topics: Topic
   const workbook = XLSX.utils.book_new()
 
   const summarySheet = XLSX.utils.aoa_to_sheet([
-    ["Kind", "Summe Punkte", "Anzahl Bewertungen", "NA Anzahl", "Durchschnitt (ohne NA)"],
-    ...report.summaries.map((row) => [
-      row.studentName,
-      row.totalPoints,
-      row.ratingCount,
-      row.naCount,
-      row.average !== null ? Number(row.average.toFixed(2)) : "",
-    ]),
+    ["Fach", "Kind", "Summe Punkte", "Anzahl Bewertungen", "NA Anzahl", "Durchschnitt (ohne NA)"],
+    ...report.summariesBySubject.flatMap((subject) =>
+      subject.students.map((row) => [
+        subject.subjectName,
+        row.studentName,
+        row.totalPoints,
+        row.ratingCount,
+        row.naCount,
+        row.average !== null ? Number(row.average.toFixed(2)) : "",
+      ]),
+    ),
   ])
   XLSX.utils.book_append_sheet(workbook, summarySheet, "Zusammenfassung")
 
