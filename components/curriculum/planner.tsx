@@ -13,7 +13,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 import { addDays, parseISO } from "date-fns"
-import { CalendarDays, GripVertical, UserRound } from "lucide-react"
+import { BarChart3, CalendarDays, GripVertical, UserRound } from "lucide-react"
 import { useMemo, useRef, useState } from "react"
 import { useAuth } from "@/components/auth/auth-context"
 import { UserView } from "@/components/user/user-view"
@@ -25,10 +25,12 @@ import {
   TIMELINE_START,
 } from "@/lib/curriculum-data"
 import { deleteMaterialStorage, uploadMaterials } from "@/lib/material-upload"
+import { removeStudentFromReferences } from "@/lib/reference-utils"
 import { computeBlockSpan } from "@/lib/placement"
 import { rescheduleWithCascade } from "@/lib/scheduling"
 import type { Material, ScheduledBlock, Student, Subject, SubjectColor, SubTopic, Topic } from "@/lib/types"
 import { CatalogSidebar } from "./catalog-sidebar"
+import { CurriculumReportView } from "./curriculum-report"
 import { DockedPanel } from "./docked-panel"
 import { TimelineGrid, type DropPreview } from "./timeline-grid"
 import { YearOverview } from "./year-overview"
@@ -46,6 +48,7 @@ interface ActiveDrag {
 type Selection =
   | { kind: "block"; blockId: string }
   | { kind: "subtopic"; topicId: string; subTopicId: string }
+  | { kind: "topic"; topicId: string }
   | null
 
 export function Planner() {
@@ -68,7 +71,7 @@ export function Planner() {
   const [activeDrag, setActiveDrag] = useState<ActiveDrag | null>(null)
   const [preview, setPreview] = useState<DropPreview | null>(null)
   const [selection, setSelection] = useState<Selection>(null)
-  const [view, setView] = useState<"planner" | "user">("planner")
+  const [view, setView] = useState<"planner" | "report" | "user">("planner")
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -79,12 +82,16 @@ export function Planner() {
     selection?.kind === "subtopic"
       ? topics.find((t) => t.id === selection.topicId)?.children.find((st) => st.id === selection.subTopicId) ?? null
       : null
+  const selectedTopic =
+    selection?.kind === "topic" ? topics.find((t) => t.id === selection.topicId) ?? null : null
   const selectedBlockId = selectedBlock?.id ?? null
   const selectedSubject = selectedBlock
     ? subjects.find((s) => s.id === selectedBlock.subjectId) ?? null
     : selectedSubTopic
       ? subjects.find((s) => s.id === topics.find((t) => t.id === selectedSubTopic.topicId)?.subjectId) ?? null
-      : null
+      : selectedTopic
+        ? subjects.find((s) => s.id === selectedTopic.subjectId) ?? null
+        : null
 
   // ---- Catalog mutations ---------------------------------------------------
 
@@ -201,6 +208,9 @@ export function Planner() {
   function openSubTopicConfig(topicId: string, subTopicId: string) {
     setSelection({ kind: "subtopic", topicId, subTopicId })
   }
+  function openTopicConfig(topicId: string) {
+    setSelection({ kind: "topic", topicId })
+  }
   function deleteSubTopic(topicId: string, subTopicId: string) {
     setTopics((prev) =>
       prev.map((t) => (t.id === topicId ? { ...t, children: t.children.filter((st) => st.id !== subTopicId) } : t)),
@@ -222,7 +232,7 @@ export function Planner() {
                   durationInDays: 2,
                   bufferInDays: 1,
                   materials: [],
-                  points: {},
+                  references: [],
                   differentiation: { support: "", challenge: "" },
                 },
               ],
@@ -247,11 +257,10 @@ export function Planner() {
     setTopics((prev) =>
       prev.map((t) => ({
         ...t,
-        children: t.children.map((st) => {
-          if (!(id in st.points)) return st
-          const { [id]: _removed, ...rest } = st.points
-          return { ...st, points: rest }
-        }),
+        children: t.children.map((st) => ({
+          ...st,
+          references: removeStudentFromReferences(st.references, id),
+        })),
       })),
     )
   }
@@ -470,6 +479,20 @@ export function Planner() {
             <button
               type="button"
               role="tab"
+              aria-selected={view === "report"}
+              onClick={() => setView("report")}
+              className={
+                view === "report"
+                  ? "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium bg-background text-foreground shadow-sm"
+                  : "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+              }
+            >
+              <BarChart3 className="size-3.5" />
+              Auswertung
+            </button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={view === "user"}
               onClick={() => setView("user")}
               className={
@@ -499,6 +522,10 @@ export function Planner() {
           onUploadFiles={uploadMaterialsForSubTopic}
           onDeleteMaterial={deleteMaterial}
         />
+      ) : view === "report" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <CurriculumReportView subjects={subjects} topics={topics} students={students} />
+        </div>
       ) : (
         <>
       <YearOverview
@@ -531,6 +558,7 @@ export function Planner() {
             onDeleteSubTopic={deleteSubTopic}
             onAddSubTopic={addSubTopic}
             onOpenSubTopicConfig={openSubTopicConfig}
+            onOpenTopicConfig={openTopicConfig}
           />
           <TimelineGrid
             engine={engine}
@@ -558,6 +586,7 @@ export function Planner() {
       <DockedPanel
         block={selectedBlock}
         subTopic={selectedSubTopic}
+        topic={selectedTopic}
         subject={selectedSubject}
         subjects={subjects}
         topics={topics}

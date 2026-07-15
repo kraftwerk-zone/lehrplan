@@ -113,6 +113,7 @@ export interface Database {
           differentiation_support: string
           differentiation_challenge: string
           points: Json
+          reference_items: Json
           sort_order: number
           created_at: string
           updated_at: string
@@ -127,6 +128,7 @@ export interface Database {
           differentiation_support?: string
           differentiation_challenge?: string
           points?: Json
+          reference_items?: Json
           sort_order?: number
           created_at?: string
           updated_at?: string
@@ -141,6 +143,7 @@ export interface Database {
           differentiation_support?: string
           differentiation_challenge?: string
           points?: Json
+          reference_items?: Json
           sort_order?: number
           created_at?: string
           updated_at?: string

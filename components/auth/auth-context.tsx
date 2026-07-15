@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import type { User } from "@supabase/supabase-js"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { isClockSkewError, mapAuthError } from "@/lib/auth-errors"
 
 export interface AuthUser {
   id: string
@@ -54,8 +55,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true
 
     async function initSession() {
-      const { data } = await supabase.auth.getSession()
+      const { data, error } = await supabase.auth.getSession()
       if (!mounted) return
+
+      if (error && isClockSkewError(error.message)) {
+        await supabase.auth.signOut({ scope: "local" })
+        setUser(null)
+        setReady(true)
+        return
+      }
+
       setUser(data.session?.user ? mapSupabaseUser(data.session.user) : null)
       setReady(true)
     }
@@ -80,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: "Supabase ist nicht konfiguriert." }
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error: error?.message ?? null }
+    return { error: error ? mapAuthError(error.message) : null }
   }, [])
 
   const logout = useCallback(async () => {

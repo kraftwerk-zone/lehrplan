@@ -1,7 +1,7 @@
 "use client"
 
 import { useDraggable } from "@dnd-kit/core"
-import { ChevronRight, GripVertical, Plus, SlidersHorizontal, Trash2 } from "lucide-react"
+import { ChevronRight, GripVertical, Plus, SlidersHorizontal, Table2, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { getSubjectTheme } from "@/lib/subject-theme"
@@ -17,6 +17,7 @@ interface CatalogSidebarProps {
   onDeleteSubTopic: (topicId: string, subTopicId: string) => void
   onAddSubTopic: (topicId: string) => void
   onOpenSubTopicConfig: (topicId: string, subTopicId: string) => void
+  onOpenTopicConfig: (topicId: string) => void
 }
 
 export function CatalogSidebar({
@@ -29,6 +30,7 @@ export function CatalogSidebar({
   onDeleteSubTopic,
   onAddSubTopic,
   onOpenSubTopicConfig,
+  onOpenTopicConfig,
 }: CatalogSidebarProps) {
   const [closedSubjects, setClosedSubjects] = useState<Set<string>>(new Set())
 
@@ -132,6 +134,7 @@ export function CatalogSidebar({
                       onDeleteSubTopic={onDeleteSubTopic}
                       onAddSubTopic={onAddSubTopic}
                       onOpenSubTopicConfig={onOpenSubTopicConfig}
+                      onOpenTopicConfig={onOpenTopicConfig}
                     />
                   ))}
                 </div>
@@ -165,6 +168,7 @@ interface TopicCardProps {
   onDeleteSubTopic: (topicId: string, subTopicId: string) => void
   onAddSubTopic: (topicId: string) => void
   onOpenSubTopicConfig: (topicId: string, subTopicId: string) => void
+  onOpenTopicConfig: (topicId: string) => void
 }
 
 function TopicCard({
@@ -176,6 +180,7 @@ function TopicCard({
   onDeleteSubTopic,
   onAddSubTopic,
   onOpenSubTopicConfig,
+  onOpenTopicConfig,
 }: TopicCardProps) {
   const theme = getSubjectTheme(subject.color)
   const total = getTopicTotalDuration(topic)
@@ -206,6 +211,15 @@ function TopicCard({
           aria-label="Themenname"
         />
         <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold", theme.chip)}>{total} T</span>
+        <button
+          type="button"
+          onClick={() => onOpenTopicConfig(topic.id)}
+          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label="Aggregierte Bewertungen"
+          title="Thema: aggregierte Bewertungen"
+        >
+          <Table2 className="size-3.5" />
+        </button>
         <button
           type="button"
           onClick={() => onDeleteTopic(topic.id)}
@@ -307,7 +321,7 @@ function SubTopicRow({ subTopic, subject, onUpdateSubTopic, onDeleteSubTopic, on
           onClick={() => onOpenSubTopicConfig(subTopic.topicId, subTopic.id)}
           className="relative rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           aria-label="Konfiguration öffnen"
-          title="Konfiguration, Materialien & Punkte"
+          title="Konfiguration, Verweise & Materialien"
         >
           <SlidersHorizontal className="size-3.5" />
           {materialCount > 0 && (

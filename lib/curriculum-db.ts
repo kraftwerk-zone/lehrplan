@@ -1,7 +1,8 @@
 import { formatISO, parseISO } from "date-fns"
 import type { Tables, TablesInsert } from "./database.types"
 import { supabase } from "./supabase"
-import type { Material, ScheduledBlock, Student, Subject, SubjectColor, SubTopic, Topic } from "./types"
+import type { Material, Reference, ScheduledBlock, Student, Subject, SubjectColor, SubTopic, Topic } from "./types"
+import { normalizeReferences } from "./reference-utils"
 
 export interface CurriculumData {
   subjects: Subject[]
@@ -40,7 +41,13 @@ function materialFromRow(row: Tables<"materials">): Material {
   }
 }
 
+function parseReferences(raw: unknown, subTopicId: string, legacyPoints: Record<string, number>): Reference[] {
+  const fromDb = (raw as Reference[] | null) ?? []
+  return normalizeReferences(subTopicId, fromDb, legacyPoints)
+}
+
 function subTopicFromRow(row: Tables<"sub_topics">, materials: Material[]): SubTopic {
+  const legacyPoints = (row.points as Record<string, number>) ?? {}
   return {
     id: row.id,
     topicId: row.topic_id,
@@ -48,7 +55,7 @@ function subTopicFromRow(row: Tables<"sub_topics">, materials: Material[]): SubT
     durationInDays: row.duration_in_days,
     bufferInDays: row.buffer_in_days,
     materials,
-    points: (row.points as Record<string, number>) ?? {},
+    references: parseReferences(row.reference_items, row.id, legacyPoints),
     differentiation: {
       support: row.differentiation_support,
       challenge: row.differentiation_challenge,
@@ -57,14 +64,25 @@ function subTopicFromRow(row: Tables<"sub_topics">, materials: Material[]): SubT
 }
 
 function blockFromRow(row: Tables<"scheduled_blocks">): ScheduledBlock {
-  const snapshot = row.topic_snapshot as unknown as Topic
+  type LegacySubTopic = SubTopic & { points?: Record<string, number> }
+  const raw = row.topic_snapshot as unknown as Topic & { children: LegacySubTopic[] }
+  const topicReference: Topic = {
+    ...raw,
+    children: raw.children.map((st) => {
+      const legacy = st as LegacySubTopic
+      return {
+        ...legacy,
+        references: normalizeReferences(legacy.id, legacy.references, legacy.points ?? {}),
+      }
+    }),
+  }
   return {
     id: row.id,
     topicId: row.topic_id,
     subjectId: row.subject_id,
     startDate: toDate(row.start_date),
     endDate: toDate(row.end_date),
-    topicReference: snapshot,
+    topicReference,
     understandingLevel: row.understanding_level,
     completedSubTopics: row.completed_sub_topics,
     differentiation: {
@@ -111,7 +129,8 @@ function subTopicToRow(userId: string, subTopic: SubTopic, sortOrder: number): T
     buffer_in_days: subTopic.bufferInDays,
     differentiation_support: subTopic.differentiation.support,
     differentiation_challenge: subTopic.differentiation.challenge,
-    points: subTopic.points,
+    points: {},
+    reference_items: subTopic.references as unknown as TablesInsert<"sub_topics">["reference_items"],
     sort_order: sortOrder,
   }
 }

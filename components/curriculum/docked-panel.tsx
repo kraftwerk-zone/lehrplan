@@ -37,13 +37,17 @@ import { deleteMaterialStorage, uploadMaterials } from "@/lib/material-upload"
 import { getSubjectTheme } from "@/lib/subject-theme"
 import type { Material, ScheduledBlock, Student, SubTopic, Subject, Topic } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { AggregatedRatingsTable, ReferenceEditor, ReferenceRatingsCompact } from "./reference-editor"
 import { GlobalFileTree } from "./file-tree"
+import { aggregateTopicReferences } from "@/lib/reference-utils"
 
 interface DockedPanelProps {
   /** Selected scheduled block (block mode) — mutually exclusive with subTopic. */
   block: ScheduledBlock | null
-  /** Selected catalog sub-topic (config mode) — mutually exclusive with block. */
+  /** Selected catalog sub-topic (config mode). */
   subTopic: SubTopic | null
+  /** Selected catalog topic — aggregated ratings view. */
+  topic: Topic | null
   /** Subject of the selected item. */
   subject: Subject | null
   /** Full catalog, used to render the global file tree. */
@@ -55,6 +59,7 @@ interface DockedPanelProps {
   onDeleteBlock: (id: string) => void
   onSplitBlock: (blockId: string, index: number) => void
   onUpdateSubTopic: (subTopic: SubTopic) => void
+  onUpdateTopic?: (topic: Topic) => void
   userId?: string
 }
 
@@ -63,6 +68,7 @@ type MaterialView = "list" | "tree"
 export function DockedPanel({
   block,
   subTopic,
+  topic,
   subject,
   subjects,
   topics,
@@ -72,10 +78,11 @@ export function DockedPanel({
   onDeleteBlock,
   onSplitBlock,
   onUpdateSubTopic,
+  onUpdateTopic,
   userId,
 }: DockedPanelProps) {
   const [view, setView] = useState<MaterialView>("list")
-  const open = Boolean((block || subTopic) && subject)
+  const open = Boolean((block || subTopic || topic) && subject)
   const theme = subject ? getSubjectTheme(subject.color) : null
 
   return (
@@ -108,7 +115,7 @@ export function DockedPanel({
                   <span className={cn("inline-flex size-2.5 rounded-full", theme.dot)} aria-hidden />
                   <span className="text-xs font-medium text-muted-foreground">
                     {subject.name}
-                    {block ? " · Geplanter Block" : " · Katalog-Unterthema"}
+                    {block ? " · Geplanter Block" : topic ? " · Thema (aggregiert)" : " · Unterthema"}
                   </span>
                 </div>
                 {block ? (
@@ -120,6 +127,8 @@ export function DockedPanel({
                       {format(block.startDate, "dd.MM.yyyy")} – {format(block.endDate, "dd.MM.yyyy")}
                     </p>
                   </>
+                ) : topic ? (
+                  <h2 className="mt-1 truncate text-lg font-semibold text-foreground">{topic.name}</h2>
                 ) : (
                   subTopic && (
                     <input
@@ -153,12 +162,16 @@ export function DockedPanel({
                 />
               )}
 
-              {/* ---- SubTopic-only: time planning + points ---- */}
+              {topic && !block && !subTopic && (
+                <TopicAggregatedSection topic={topic} students={students} />
+              )}
+
               {subTopic && !block && (
                 <SubTopicSections subTopic={subTopic} students={students} onUpdateSubTopic={onUpdateSubTopic} />
               )}
 
               {/* ---- Shared: materials (list + global tree) ---- */}
+              {(block || subTopic) && (
               <section>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-medium text-foreground">
@@ -224,6 +237,7 @@ export function DockedPanel({
                   </div>
                 )}
               </section>
+              )}
             </div>
 
             {block && (
@@ -393,35 +407,12 @@ function BlockSections({ block, theme, students, onUpdateBlock, onSplitBlock }: 
 
                     <div className="mt-3 border-t border-border/60 pt-2">
                       <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Punkte pro Kind
+                        Bewertungen (aggregiert)
                       </p>
                       {students.length === 0 ? (
                         <p className="text-[11px] text-muted-foreground">Noch keine Kinder angelegt.</p>
                       ) : (
-                        <ul className="space-y-1">
-                          {students.map((child) => (
-                            <li key={child.id} className="flex items-center justify-between gap-2">
-                              <span className="truncate text-xs text-foreground">{child.name}</span>
-                              <input
-                                type="number"
-                                min={0}
-                                inputMode="numeric"
-                                aria-label={`Punkte für ${child.name} in ${st.name}`}
-                                value={st.points[child.id] ?? ""}
-                                placeholder="0"
-                                onChange={(e) =>
-                                  updateSubTopic(st.id, {
-                                    points: {
-                                      ...st.points,
-                                      [child.id]: e.target.value === "" ? 0 : Number(e.target.value),
-                                    },
-                                  })
-                                }
-                                className="w-14 rounded-md border border-border bg-background px-1.5 py-1 text-right text-xs tabular-nums text-foreground outline-none focus:ring-1 focus:ring-ring"
-                              />
-                            </li>
-                          ))}
-                        </ul>
+                        <ReferenceRatingsCompact subTopic={st} students={students} />
                       )}
                     </div>
                     </div>
@@ -482,12 +473,6 @@ function SubTopicSections({ subTopic, students, onUpdateSubTopic }: SubTopicSect
     const n = Math.max(0, Math.min(60, Number.parseInt(value || "0", 10) || 0))
     onUpdateSubTopic({ ...subTopic, [field]: n })
   }
-  function setPoints(studentId: string, value: string) {
-    const n = Math.max(0, Math.min(999, Number.parseInt(value || "0", 10) || 0))
-    onUpdateSubTopic({ ...subTopic, points: { ...subTopic.points, [studentId]: n } })
-  }
-
-  const totalPoints = students.reduce((sum, s) => sum + (subTopic.points[s.id] ?? 0), 0)
 
   return (
     <>
@@ -523,35 +508,49 @@ function SubTopicSections({ subTopic, students, onUpdateSubTopic }: SubTopicSect
       </section>
 
       <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">Punkte pro Kind</h3>
-          <span className="text-xs text-muted-foreground">Gesamt: {totalPoints} Pkt</span>
-        </div>
+        <h3 className="mb-2 text-sm font-semibold text-foreground">Verweise & Bewertungen</h3>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Material-, Buch- und andere Verweise mit Punkten pro Kind. NA = nicht anwesend (fließt nicht in den
+          Durchschnitt ein).
+        </p>
         {students.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Erst Kinder im Katalog anlegen.</p>
+          <p className="text-xs text-muted-foreground">Erst Kinder im Benutzerbereich anlegen.</p>
         ) : (
-          <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {students.map((student) => (
-              <li
-                key={student.id}
-                className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5"
-              >
-                <span className="min-w-0 flex-1 truncate text-sm text-foreground">{student.name}</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={subTopic.points[student.id] ?? 0}
-                  onChange={(e) => setPoints(student.id, e.target.value)}
-                  className="w-16 rounded border border-border bg-background px-2 py-1 text-center text-sm tabular-nums text-foreground outline-none focus:ring-1 focus:ring-ring"
-                  aria-label={`Punkte für ${student.name}`}
-                />
-                <span className="text-xs text-muted-foreground">Pkt</span>
-              </li>
-            ))}
-          </ul>
+          <ReferenceEditor subTopic={subTopic} students={students} onUpdate={onUpdateSubTopic} />
         )}
       </section>
     </>
+  )
+}
+
+function TopicAggregatedSection({ topic, students }: { topic: Topic; students: Student[] }) {
+  const rows = aggregateTopicReferences(topic, students)
+  return (
+    <section>
+      <h3 className="mb-2 text-sm font-semibold text-foreground">Aggregierte Bewertungen</h3>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Summe aller Verweise über alle Unterthemen dieses Themas. Kinder alphabetisch sortiert.
+      </p>
+      {students.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Noch keine Kinder angelegt.</p>
+      ) : (
+        <AggregatedRatingsTable
+          title={topic.name}
+          caption="Summe · NA-Anzahl · Durchschnitt (nur bewertete Verweise)"
+          rows={rows}
+        />
+      )}
+      {topic.children.length > 0 && (
+        <ul className="mt-4 space-y-2">
+          {topic.children.map((st) => (
+            <li key={st.id} className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+              <p className="text-sm font-medium text-foreground">{st.name}</p>
+              <p className="text-xs text-muted-foreground">{st.references.length} Verweise</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 

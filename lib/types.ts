@@ -24,6 +24,19 @@ export interface Student {
   name: string
 }
 
+export type ReferenceType = "material" | "book" | "other"
+
+/** Points per child for one reference row; NA = nicht anwesend. */
+export type StudentRating = number | "NA"
+
+export interface Reference {
+  id: string
+  type: ReferenceType
+  /** Multiline description of the material/book/other reference. */
+  text: string
+  ratings: Record<string, StudentRating>
+}
+
 export interface SubTopic {
   id: string
   topicId: string
@@ -31,8 +44,7 @@ export interface SubTopic {
   durationInDays: number // active teaching time (work days)
   bufferInDays: number // PufferDays for overflow / review (work days)
   materials: Material[]
-  // Points awarded per pupil for this sub-topic. Keyed by Student.id.
-  points: Record<string, number>
+  references: Reference[]
   differentiation: {
     support: string
     challenge: string
